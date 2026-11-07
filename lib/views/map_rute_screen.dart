@@ -1,13 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import '../models/pedagang_model.dart';
 import '../services/pedagang_service.dart';
-import 'pencarian_screen.dart'; // Untuk extension toTitleCase()
+import 'pencarian_screen.dart';
 
 class MapRuteScreen extends StatefulWidget {
   final PedagangModel pedagang;
@@ -30,14 +28,13 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
 
   // Lokasi & Navigasi Real-time
   LatLng? _currentLiveLocation;
-  double _currentHeading = 0.0; // Arah hadap kompas / pergerakan
-  double _remainingDistance = 0.0; // Jarak tersisa (meter)
+  double _currentHeading = 0.0;
+  double _remainingDistance = 0.0;
   StreamSubscription<Position>? _positionStreamSubscription;
 
-  List<LatLng> _routePoints = [];
-  bool _isLoadingRoute = false;
   bool _isLoadingData = true;
   bool _isNavigating = false;
+  bool _showSearchResults = true;
 
   @override
   void initState() {
@@ -52,7 +49,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
       );
     }
 
-    _loadDataAndRoute();
+    _loadData();
   }
 
   @override
@@ -62,9 +59,39 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
     super.dispose();
   }
 
-  Future<void> _loadDataAndRoute() async {
-    setState(() => _isLoadingData = true);
+  // Fungsi Pencocokan Gambar Aset Berdasarkan Nama Pedagang
+  String? _getImageAssetPath(String namePedagang) {
+    final name = namePedagang.toLowerCase();
 
+    if (name.contains('rempah')) {
+      return 'assets/pedagang rempah barito.jpeg';
+    } else if (name.contains('baju')) {
+      return 'assets/pedagang baju barito.jpeg';
+    } else if (name.contains('electronic') || name.contains('giga')) {
+      return 'assets/gigacom.jpeg';
+    } else if (name.contains('pakaian')) {
+      return 'assets/pedagangpakaian.jpeg';
+    } else if (name.contains('pertokoan') && name.contains('garuda')) {
+      return 'assets/garudaelok.jpeg';
+    } else if (name.contains('ruko sinar jaya')) {
+      return 'assets/rukosinarjaya.jpeg';
+    } else if (name.contains('depo mart')) {
+      return 'assets/depomart.jpeg';
+    } else if (name.contains('pertokoan') && name.contains('makmur')) {
+      return 'assets/makmur.jpeg';
+    } else if (name.contains('buah')) {
+      return 'assets/pedagangbuah.jpeg';
+    } else if (name.contains('sembako')) {
+      return 'assets/pedagangsembako.jpeg';
+    } else if (name.contains('ikan')) {
+      return 'assets/pedagangikan.jpeg';
+    }
+
+    return null;
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoadingData = true);
     List<PedagangModel> list = await _service.searchPedagang('');
 
     if (mounted) {
@@ -74,11 +101,8 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
         _isLoadingData = false;
       });
     }
-
-    _fetchRouteForSelected();
   }
 
-  // Memulai Navigasi Real-Time Mengikuti Pergerakan Pengguna
   void _startLiveNavigation() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
@@ -90,53 +114,45 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
       _isNavigating = true;
     });
 
-    // Pengaturan pelacakan GPS akurasi tinggi
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 2, // Memperbarui posisi setiap bergerak 2 meter
+      distanceFilter: 2,
     );
 
     _positionStreamSubscription?.cancel();
     _positionStreamSubscription =
-        Geolocator.getPositionStream(
-          locationSettings: locationSettings,
-        ).listen((Position position) {
-          final newLatLng = LatLng(position.latitude, position.longitude);
+        Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+          (Position position) {
+            final newLatLng = LatLng(position.latitude, position.longitude);
 
-          // Hitung jarak sisa dari lokasi terkini ke lokasi tujuan pedagang
-          double distance = Geolocator.distanceBetween(
-            position.latitude,
-            position.longitude,
-            _selectedPedagang!.latitude,
-            _selectedPedagang!.longitude,
-          );
+            double distance = Geolocator.distanceBetween(
+              position.latitude,
+              position.longitude,
+              _selectedPedagang!.latitude,
+              _selectedPedagang!.longitude,
+            );
 
-          if (mounted) {
-            setState(() {
-              _currentLiveLocation = newLatLng;
-              _currentHeading = position.heading;
-              _remainingDistance = distance;
-            });
+            if (mounted) {
+              setState(() {
+                _currentLiveLocation = newLatLng;
+                _currentHeading = position.heading;
+                _remainingDistance = distance;
+              });
 
-            // 1. Geser kamera peta secara otomatis mengikuti lokasi pengguna terbaru
-            _mapController.move(newLatLng, 17.5);
+              _mapController.move(newLatLng, 17.5);
 
-            // 2. Perbarui rute dari posisi berjalan pengguna ke pedagang
-            _fetchRouteForSelected();
-
-            // 3. Deteksi otomatis jika pengguna telah SAMPAI DI TUJUAN (jarak <= 10 meter)
-            if (distance <= 10.0) {
-              _onArrivedAtDestination();
+              if (distance <= 10.0) {
+                _onArrivedAtDestination();
+              }
             }
-          }
-        });
+          },
+        );
 
     if (_currentLiveLocation != null) {
       _mapController.move(_currentLiveLocation!, 17.5);
     }
   }
 
-  // Aksi ketika pengguna sudah sampai di tujuan
   void _onArrivedAtDestination() {
     _stopLiveNavigation();
     showDialog(
@@ -180,6 +196,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
 
   void _onSearchChanged(String query) {
     setState(() {
+      _showSearchResults = true;
       if (query.isEmpty) {
         _filteredPedagang = _allPedagang;
       } else {
@@ -194,58 +211,10 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
     setState(() {
       _selectedPedagang = pedagang;
       _searchController.text = pedagang.nama;
+      _showSearchResults = false;
     });
 
-    if (!_isNavigating) {
-      _mapController.move(LatLng(pedagang.latitude, pedagang.longitude), 15.5);
-    }
-
-    _fetchRouteForSelected();
-  }
-
-  Future<void> _fetchRouteForSelected() async {
-    if (_currentLiveLocation == null || _selectedPedagang == null) return;
-
-    final startLat = _currentLiveLocation!.latitude;
-    final startLng = _currentLiveLocation!.longitude;
-    final endLat = _selectedPedagang!.latitude;
-    final endLng = _selectedPedagang!.longitude;
-
-    final url = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/$startLng,$startLat;$endLng,$endLat?overview=full&geometries=geojson',
-    );
-
-    try {
-      final response = await http.get(url);
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['routes'] != null && data['routes'].isNotEmpty) {
-          final coordinates =
-              data['routes'][0]['geometry']['coordinates'] as List;
-
-          List<LatLng> points = coordinates.map((coord) {
-            return LatLng(coord[1].toDouble(), coord[0].toDouble());
-          }).toList();
-
-          if (mounted) {
-            setState(() {
-              _routePoints = points;
-              _isLoadingRoute = false;
-            });
-          }
-          return;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error mengambil rute: $e');
-    }
-
-    if (mounted) {
-      setState(() {
-        _routePoints = [LatLng(startLat, startLng), LatLng(endLat, endLng)];
-        _isLoadingRoute = false;
-      });
-    }
+    _mapController.move(LatLng(pedagang.latitude, pedagang.longitude), 16.5);
   }
 
   String _formatDistance(double meters) {
@@ -253,6 +222,22 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
       return '${(meters / 1000).toStringAsFixed(1)} km';
     }
     return '${meters.round()} m';
+  }
+
+  Widget _buildFallbackIcon() {
+    return Container(
+      width: 45,
+      height: 45,
+      decoration: BoxDecoration(
+        color: Colors.teal.shade50,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Icon(
+        Icons.storefront_rounded,
+        color: Colors.teal.shade700,
+        size: 24,
+      ),
+    );
   }
 
   @override
@@ -266,9 +251,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // -------------------------------------------------------------
           // 1. BASE MAP
-          // -------------------------------------------------------------
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(initialCenter: centerLatLng, initialZoom: 15.5),
@@ -277,25 +260,8 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.rosma_info2',
               ),
-
-              // Rute Jalan Raya
-              if (_routePoints.isNotEmpty)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _routePoints,
-                      strokeWidth: _isNavigating ? 6.5 : 5.0,
-                      color: _isNavigating
-                          ? Colors.blue.shade600
-                          : Colors.blueAccent.shade700,
-                    ),
-                  ],
-                ),
-
-              // Markers
               MarkerLayer(
                 markers: [
-                  // Markers Pedagang
                   ..._filteredPedagang.map((pedagang) {
                     final isSelected = pedagang.id == _selectedPedagang?.id;
                     return Marker(
@@ -314,8 +280,6 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                       ),
                     );
                   }),
-
-                  // Marker Lokasi Pengguna Real-Time (Memutar Sesuai Arah)
                   if (_currentLiveLocation != null)
                     Marker(
                       point: _currentLiveLocation!,
@@ -339,12 +303,6 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                   color: Colors.white,
                                   width: 3,
                                 ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 6,
-                                  ),
-                                ],
                               ),
                               child: const Icon(
                                 Icons.navigation,
@@ -361,9 +319,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
             ],
           ),
 
-          // -------------------------------------------------------------
           // 2. FLOATING SEARCH BAR
-          // -------------------------------------------------------------
           if (!_isNavigating)
             Positioned(
               top: MediaQuery.of(context).padding.top + 12,
@@ -421,10 +377,8 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
               ),
             ),
 
-          // -------------------------------------------------------------
-          // 3. FLOATING HASIL PENCARIAN CARD
-          // -------------------------------------------------------------
-          if (!_isNavigating)
+          // 3. FLOATING HASIL PENCARIAN CARD (Dengan Gambar Asli)
+          if (!_isNavigating && _showSearchResults)
             Positioned(
               top: MediaQuery.of(context).padding.top + 76,
               left: 16,
@@ -482,6 +436,9 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                 final item = _filteredPedagang[index];
                                 final isSelected =
                                     item.id == _selectedPedagang?.id;
+                                final String? imagePath = _getImageAssetPath(
+                                  item.nama,
+                                );
 
                                 return InkWell(
                                   onTap: () => _selectPedagang(item),
@@ -499,10 +456,27 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        Icon(
-                                          Icons.location_on,
-                                          color: Colors.red.shade600,
-                                          size: 28,
+                                        // Menampilkan Gambar Aset atau Fallback Icon
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          child: imagePath != null
+                                              ? Image.asset(
+                                                  imagePath,
+                                                  width: 45,
+                                                  height: 45,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder:
+                                                      (
+                                                        context,
+                                                        error,
+                                                        stackTrace,
+                                                      ) {
+                                                        return _buildFallbackIcon();
+                                                      },
+                                                )
+                                              : _buildFallbackIcon(),
                                         ),
                                         const SizedBox(width: 12),
                                         Expanded(
@@ -523,6 +497,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                               const SizedBox(height: 2),
                                               Text(
                                                 item.deskripsi ??
+                                                    item.kategori ??
                                                     'Pasar Gamalama, Ternate',
                                                 style: TextStyle(
                                                   fontSize: 12,
@@ -551,13 +526,11 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
               ),
             ),
 
-          // -------------------------------------------------------------
-          // 4. FLOATING CARD NAVIGASI AKTIF (Info Jarak Sisa)
-          // -------------------------------------------------------------
+          // 4. FLOATING CARD NAVIGASI AKTIF
           if (_isNavigating)
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
-              left: 16,    
+              left: 16,
               right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -608,49 +581,6 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                 ),
               ),
             ),
-
-          // -------------------------------------------------------------
-          // 5. TOMBOL MULAI / SELESAI NAVIGASI
-          // -------------------------------------------------------------
-          Positioned(
-            bottom: 24,
-            left: 16,
-            right: 16,
-            child: SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: ElevatedButton.icon(
-                onPressed: _isNavigating
-                    ? _stopLiveNavigation
-                    : _startLiveNavigation,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isNavigating
-                      ? Colors.redAccent.shade700
-                      : Colors.teal.shade700,
-                  foregroundColor: Colors.white,
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: Icon(
-                  _isNavigating ? Icons.stop_rounded : Icons.navigation_rounded,
-                  size: 24,
-                ),
-                label: Text(
-                  _isNavigating
-                      ? 'Selesai Navigasi'
-                      : 'Mulai Navigasi ke ${_selectedPedagang?.nama ?? "Tujuan"}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );

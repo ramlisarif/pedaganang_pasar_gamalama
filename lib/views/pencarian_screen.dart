@@ -38,29 +38,29 @@ class _PencarianScreenState extends State<PencarianScreen> {
     _initData();
   }
 
-  String? _getImageAssetPath(String namaPedagang) {
-    String name = namaPedagang.toLowerCase();
+  String? _getImageAssetPath(String namePedagang) {
+    final name = namePedagang.toLowerCase();
 
-    if (name.contains('gamalama')) {
-      return 'assets/pasargamalama.jpeg';
-    } else if (name.contains('buah') || name.contains('barito')) {
-      return 'assets/pasarbarito.jpeg';
-    } else if (name.contains('tingkat')) {
-      return 'assets/pasartingkat.jpeg';
-    } else if (name.contains('makmur')) {
-      return 'assets/makmur.jpeg';
-    } else if (name.contains('giga')) {
+    if (name.contains('rempah')) {
+      return 'assets/pedagang rempah barito.jpeg';
+    } else if (name.contains('electronic') || name.contains('giga')) {
       return 'assets/gigacom.jpeg';
-    } else if (name.contains('garuda')) {
+    } else if (name.contains('pakaian')) {
+      return 'assets/pedagangpakaian.jpeg';
+    } else if (name.contains('pertokoan') && name.contains('garuda')) {
       return 'assets/garudaelok.jpeg';
-    } else if (name.contains('higienis') || name.contains('higensi')) {
-      return 'assets/pasarhigienis.jpeg';
-    } else if (name.contains('depo')) {
-      return 'assets/depomart.jpeg';
-    } else if (name.contains('kota') || name.contains('pariwisata')) {
-      return 'assets/pasarkota.jpeg';
-    } else if (name.contains('batu') || name.contains('anugerah')) {
+    } else if (name.contains('ruko sinar jaya')) {
       return 'assets/rukosinarjaya.jpeg';
+    } else if (name.contains('depo mart')) {
+      return 'assets/depomart.jpeg';
+    } else if (name.contains('pertokoan') && name.contains('makmur')) {
+      return 'assets/makmur.jpeg';
+    } else if (name.contains('buah')) {
+      return 'assets/pedagangbuah.jpeg';
+    } else if (name.contains('sembako')) {
+      return 'assets/pedagangsembako.jpeg';
+    } else if (name.contains('ikan')) {
+      return 'assets/pedagangikan.jpeg';
     }
 
     return null;
