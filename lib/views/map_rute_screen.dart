@@ -5,7 +5,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../models/pedagang_model.dart';
 import '../services/pedagang_service.dart';
-import 'pencarian_screen.dart';
 
 class MapRuteScreen extends StatefulWidget {
   final PedagangModel pedagang;
@@ -25,6 +24,9 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
   List<PedagangModel> _allPedagang = [];
   List<PedagangModel> _filteredPedagang = [];
   PedagangModel? _selectedPedagang;
+
+  // Status Pilihan Layer Peta (true = Satelit, false = Peta Jalan/Standard)
+  bool _isSatelliteLayer = true;
 
   // Lokasi & Navigasi Real-time
   LatLng? _currentLiveLocation;
@@ -214,7 +216,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
       _showSearchResults = false;
     });
 
-    _mapController.move(LatLng(pedagang.latitude, pedagang.longitude), 16.5);
+    _mapController.move(LatLng(pedagang.latitude, pedagang.longitude), 17.5);
   }
 
   String _formatDistance(double meters) {
@@ -251,31 +253,85 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // 1. BASE MAP
+          // 1. BASE MAP DENGAN KONDISI SWITCH LAYER
           FlutterMap(
             mapController: _mapController,
-            options: MapOptions(initialCenter: centerLatLng, initialZoom: 15.5),
+            options: MapOptions(
+              initialCenter: centerLatLng,
+              initialZoom: 15.5,
+              minZoom: 3.0,
+              maxZoom: 19.0,
+            ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: _isSatelliteLayer
+                    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.example.rosma_info2',
+                maxZoom: 19.0,
+                maxNativeZoom: _isSatelliteLayer ? 17 : 19,
               ),
               MarkerLayer(
                 markers: [
                   ..._filteredPedagang.map((pedagang) {
                     final isSelected = pedagang.id == _selectedPedagang?.id;
+                    final String? imagePath = _getImageAssetPath(pedagang.nama);
+
                     return Marker(
                       point: LatLng(pedagang.latitude, pedagang.longitude),
-                      width: isSelected ? 46 : 36,
-                      height: isSelected ? 46 : 36,
+                      width: 60,
+                      height: 100,
+                      alignment: Alignment.topCenter,
                       child: GestureDetector(
                         onTap: () => _selectPedagang(pedagang),
-                        child: Icon(
-                          Icons.location_on,
-                          color: isSelected
-                              ? Colors.redAccent
-                              : Colors.red.shade300,
-                          size: isSelected ? 46 : 36,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: isSelected ? 46 : 36,
+                              height: isSelected ? 46 : 36,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? Colors.redAccent
+                                      : Colors.teal.shade700,
+                                  width: 2.5,
+                                ),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipOval(
+                                child: imagePath != null
+                                    ? Image.asset(
+                                        imagePath,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return const Icon(
+                                                Icons.store,
+                                                size: 18,
+                                              );
+                                            },
+                                      )
+                                    : const Icon(Icons.store, size: 18),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Icon(
+                              Icons.location_on,
+                              color: isSelected
+                                  ? Colors.redAccent
+                                  : Colors.red.shade400,
+                              size: isSelected ? 36 : 30,
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -377,7 +433,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
               ),
             ),
 
-          // 3. FLOATING HASIL PENCARIAN CARD (Dengan Gambar Asli)
+          // 3. FLOATING HASIL PENCARIAN CARD
           if (!_isNavigating && _showSearchResults)
             Positioned(
               top: MediaQuery.of(context).padding.top + 76,
@@ -456,7 +512,6 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                     ),
                                     child: Row(
                                       children: [
-                                        // Menampilkan Gambar Aset atau Fallback Icon
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(
                                             10,
@@ -485,7 +540,7 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                item.nama.toTitleCase(),
+                                                item.nama,
                                                 style: const TextStyle(
                                                   fontSize: 15,
                                                   fontWeight: FontWeight.bold,
@@ -526,7 +581,29 @@ class _MapRuteScreenState extends State<MapRuteScreen> {
               ),
             ),
 
-          // 4. FLOATING CARD NAVIGASI AKTIF
+          // 4. TOMBOL FLOATING UNTUK MENGGANTI LAYER PETA (DIGESER KE KANAN ATAS)
+          if (!_isNavigating && !_showSearchResults)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 76,
+              right: 16,
+              child: FloatingActionButton.small(
+                heroTag: 'layer_switch',
+                backgroundColor: Colors.white,
+                elevation: 4,
+                onPressed: () {
+                  setState(() {
+                    _isSatelliteLayer = !_isSatelliteLayer;
+                  });
+                },
+                child: Icon(
+                  _isSatelliteLayer ? Icons.map_outlined : Icons.satellite_alt,
+                  color: Colors.teal.shade800,
+                  size: 22,
+                ),
+              ),
+            ),
+
+          // 5. FLOATING CARD NAVIGASI AKTIF
           if (_isNavigating)
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
